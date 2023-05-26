@@ -49,7 +49,7 @@ variable "smartgroup_internet" {
 module "aws_transit" {
   source              = "terraform-aviatrix-modules/mc-transit/aviatrix"
   cloud               = "AWS"
-  version             = "2.4.2"
+  version             = "2.5.0"
   account             = var.aws_account_name
   region              = var.aws_region
   cidr                = "10.40.250.0/23"
@@ -62,7 +62,7 @@ module "aws_transit" {
 module "shared-spoke" {
   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
   cloud   = "AWS"
-  version = "1.5.0"
+  version = "1.6.1"
 
   name           = "aws-shared"
   cidr           = "10.1.0.0/16"
@@ -78,14 +78,14 @@ module "shared-spoke" {
 module "app1-spoke" {
   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
   cloud   = "AWS"
-  version = "1.5.0"
+  version = "1.6.1"
 
   name           = "aws-app1"
   cidr           = "10.2.0.0/16"
   region         = var.aws_region
   account        = var.aws_account_name
   transit_gw     = module.aws_transit.transit_gateway.gw_name
-  instance_size  = "t3.micro"
+  instance_size  = "t3.medium"
   ha_gw          = false
   network_domain = aviatrix_segmentation_network_domain.app1.domain_name
   single_ip_snat = true
@@ -94,14 +94,14 @@ module "app1-spoke" {
 module "app2-spoke" {
   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
   cloud   = "AWS"
-  version = "1.5.0"
+  version = "1.6.1"
 
   name           = "aws-app2"
   cidr           = "10.3.0.0/16"
   region         = var.aws_region
   account        = var.aws_account_name
   transit_gw     = module.aws_transit.transit_gateway.gw_name
-  instance_size  = "t3.micro"
+  instance_size  = "t3.medium"
   ha_gw          = false
   network_domain = aviatrix_segmentation_network_domain.app2.domain_name
   single_ip_snat = true
@@ -187,6 +187,78 @@ resource "aviatrix_distributed_firewalling_policy_list" "guac" {
     ]
   }
 
+  policies {
+    name     = "APP1-DEV-INTERNET"
+    action   = "PERMIT"
+    priority = 20000
+    protocol = "ANY"
+    logging  = true
+    watch    = false
+    src_smart_groups = [
+      aviatrix_smart_group.app1-dev.uuid
+    ]
+    dst_smart_groups = [
+      var.smartgroup_internet
+    ]
+    web_groups = [
+      aviatrix_web_group.app1-dev-urls.uuid
+    ]
+  }
+
+  policies {
+    name     = "APP1-PROD-INTERNET"
+    action   = "PERMIT"
+    priority = 20001
+    protocol = "ANY"
+    logging  = true
+    watch    = false
+    src_smart_groups = [
+      aviatrix_smart_group.app1-prod.uuid
+    ]
+    dst_smart_groups = [
+      var.smartgroup_internet
+    ]
+    web_groups = [
+    ]
+  }
+
+  policies {
+    name     = "APP2-DEV-INTERNET"
+    action   = "PERMIT"
+    priority = 20002
+    protocol = "ANY"
+    logging  = true
+    watch    = false
+    src_smart_groups = [
+      aviatrix_smart_group.app2-dev.uuid
+    ]
+    dst_smart_groups = [
+      var.smartgroup_internet
+    ]
+    web_groups = [
+      aviatrix_web_group.app2-dev-urls.uuid
+    ]
+  }
+
+  policies {
+    name     = "APP2-PROD-INTERNET"
+    action   = "PERMIT"
+    priority = 20003
+    protocol = "ANY"
+    logging  = true
+    watch    = false
+    src_smart_groups = [
+      aviatrix_smart_group.app2-prod.uuid
+    ]
+    dst_smart_groups = [
+      var.smartgroup_internet
+    ]
+    web_groups = [
+      aviatrix_web_group.app2-prod-urls.uuid
+    ]
+  }
+
+  depends_on = [aviatrix_distributed_firewalling_config.default]
 }
 
 # APP1 Dev
@@ -348,6 +420,58 @@ resource "aviatrix_smart_group" "app2-prod" {
   }
 }
 
+resource "aviatrix_web_group" "app1-dev-urls" {
+  name = "APP1-DEV-URLS"
+  selector {
+    match_expressions {
+      snifilter = "aviatrix.com"
+    }
+    match_expressions {
+      snifilter = "github.com"
+    }
+    match_expressions {
+      snifilter = "ubuntu.com"
+    }
+  }
+}
+
+resource "aviatrix_web_group" "app1-prod-urls" {
+  name = "APP1-PROD-URLS"
+  selector {
+    match_expressions {
+      snifilter = "github.com"
+    }
+    match_expressions {
+      snifilter = "ubuntu.com"
+    }
+  }
+}
+
+resource "aviatrix_web_group" "app2-dev-urls" {
+  name = "APP2-DEV-URLS"
+  selector {
+    match_expressions {
+      snifilter = "microsoft.com"
+    }
+    match_expressions {
+      snifilter = "github.com"
+    }
+    match_expressions {
+      snifilter = "aviatrix.com"
+    }
+  }
+}
+
+resource "aviatrix_web_group" "app2-prod-urls" {
+  name = "APP2-PROD-URLS"
+  selector {
+    match_expressions {
+      snifilter = "github.com"
+    }
+  }
+}
+
+
 # resource "guacamole_connection_ssh" "aws_int" {
 #   count             = 4
 #   name              = "int${count.index}-ssh"
@@ -404,7 +528,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 2
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "AWS"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "aws-dev${count.index}"
 #   cidr           = "10.40.1${count.index}.0/24"
@@ -420,7 +544,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 2
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "AWS"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "aws-test${count.index}"
 #   cidr           = "10.40.2${count.index}.0/24"
@@ -436,7 +560,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "AWS"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "aws-shared${count.index}"
 #   cidr           = "10.40.3${count.index}.0/24"
@@ -467,7 +591,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "AWS"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "aws-prod-us${count.index}"
 #   cidr           = "10.41.${count.index}.0/24"
@@ -483,7 +607,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "AWS"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "aws-dev-us${count.index}"
 #   cidr           = "10.41.1${count.index}.0/24"
@@ -499,7 +623,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "AWS"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "aws-test-us${count.index}"
 #   cidr           = "10.41.2${count.index}.0/24"
@@ -530,7 +654,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "Azure"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "azure-prod${count.index}"
 #   cidr           = "10.50.${count.index}.0/24"
@@ -546,7 +670,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "Azure"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "azure-dev${count.index}"
 #   cidr           = "10.50.1${count.index}.0/24"
@@ -577,7 +701,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "Azure"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name                             = "azure-prod-de${count.index}"
 #   cidr                             = "10.60.${count.index}.0/24"
@@ -592,7 +716,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "Azure"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name                             = "azure-dev-de${count.index}"
 #   cidr                             = "10.60.1${count.index}.0/24"
@@ -624,7 +748,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "GCP"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "gcp-prod${count.index}"
 #   cidr           = "10.150.${count.index}.0/24"
@@ -640,7 +764,7 @@ resource "aviatrix_smart_group" "app2-prod" {
 #   count   = 1
 #   source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
 #   cloud   = "GCP"
-#   version = "1.5.0"
+#   version = "1.6.1"
 
 #   name           = "gcp-dev${count.index}"
 #   cidr           = "10.150.1${count.index}.0/24"

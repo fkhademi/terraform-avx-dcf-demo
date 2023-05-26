@@ -14,15 +14,6 @@ provider "azurerm" {
   features {}
 }
 
-provider "guacamole" {
-  url                      = "http://guac.avxlab.de"
-  username                 = "guacadmin"
-  password                 = "guacadmin"
-  disable_tls_verification = true
-  disable_cookies          = true
-}
-
-
 terraform {
   required_providers {
     aviatrix = {
@@ -30,9 +21,6 @@ terraform {
     }
     aws = {
       source = "hashicorp/aws"
-    }
-    guacamole = {
-      source = "techBeck03/guacamole"
     }
   }
   required_version = ">= 0.13"
