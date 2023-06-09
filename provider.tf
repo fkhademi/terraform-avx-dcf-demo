@@ -14,6 +14,12 @@ provider "azurerm" {
   features {}
 }
 
+provider "google" {
+  credentials = "gcp.json"
+  project     = "freyviatrix-2020"
+  region      = var.gcp_region
+}
+
 terraform {
   required_providers {
     aviatrix = {

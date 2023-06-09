@@ -16,6 +16,10 @@ resource "aviatrix_segmentation_network_domain" "app2" {
   domain_name = "APP2"
 }
 
+resource "aviatrix_segmentation_network_domain" "app3" {
+  domain_name = "APP3"
+}
+
 resource "aviatrix_segmentation_network_domain" "onprem" {
   domain_name = "ONPREM"
 }
@@ -29,6 +33,11 @@ resource "aviatrix_segmentation_network_domain_connection_policy" "shared1" {
 resource "aviatrix_segmentation_network_domain_connection_policy" "shared2" {
   domain_name_1 = aviatrix_segmentation_network_domain.shared.domain_name
   domain_name_2 = aviatrix_segmentation_network_domain.app2.domain_name
+}
+
+resource "aviatrix_segmentation_network_domain_connection_policy" "shared3" {
+  domain_name_1 = aviatrix_segmentation_network_domain.shared.domain_name
+  domain_name_2 = aviatrix_segmentation_network_domain.app3.domain_name
 }
 
 
@@ -125,6 +134,7 @@ module "guac" {
       host2      = module.app1-prod.vm.private_ip
       host3      = module.app2-dev.vm.private_ip
       host4      = module.app2-prod.vm.private_ip
+      host5      = module.gcp1.vm.network_interface[0].network_ip
   })
   public_ip      = true
   instance_size  = "t3.small"
@@ -168,7 +178,8 @@ resource "aviatrix_distributed_firewalling_policy_list" "guac" {
       aviatrix_smart_group.app1-dev.uuid,
       aviatrix_smart_group.app1-prod.uuid,
       aviatrix_smart_group.app2-dev.uuid,
-      aviatrix_smart_group.app2-prod.uuid
+      aviatrix_smart_group.app2-prod.uuid,
+      aviatrix_smart_group.gcp-app3.uuid
     ]
   }
 
@@ -257,6 +268,43 @@ resource "aviatrix_distributed_firewalling_policy_list" "guac" {
       aviatrix_web_group.app2-prod-urls.uuid
     ]
   }
+
+  policies {
+    name     = "GCP-APP3-INTERNET"
+    action   = "PERMIT"
+    priority = 20004
+    protocol = "ANY"
+    logging  = true
+    watch    = false
+    src_smart_groups = [
+      aviatrix_smart_group.gcp-app3.uuid
+    ]
+    dst_smart_groups = [
+      var.smartgroup_internet
+    ]
+    web_groups = [
+      aviatrix_web_group.gcp-fqdns.uuid, aviatrix_web_group.gcp-urls.uuid
+    ]
+  }
+
+  # policies {
+  #   name           = "GCP-APP3-URLS-INTERNET"
+  #   action         = "PERMIT"
+  #   priority       = 20005
+  #   protocol       = "ANY"
+  #   logging        = true
+  #   watch          = false
+  #   decrypt_policy = "DECRYPT_ALLOWED"
+  #   src_smart_groups = [
+  #     aviatrix_smart_group.gcp-app3.uuid
+  #   ]
+  #   dst_smart_groups = [
+  #     var.smartgroup_internet
+  #   ]
+  #   web_groups = [
+  #     aviatrix_web_group.gcp-urls.uuid
+  #   ]
+  # }
 
   depends_on = [aviatrix_distributed_firewalling_config.default]
 }
@@ -470,6 +518,91 @@ resource "aviatrix_web_group" "app2-prod-urls" {
     }
   }
 }
+
+
+resource "aviatrix_web_group" "gcp-fqdns" {
+  name = "GCP-ALLOWED-FQDNS"
+  selector {
+    match_expressions {
+      snifilter = "mihai.tech"
+    }
+    match_expressions {
+      snifilter = "doon.io"
+    }
+    match_expressions {
+      snifilter = "google.ca"
+    }
+  }
+}
+
+resource "aviatrix_web_group" "gcp-urls" {
+  name = "GCP-ALLOWED-URLS"
+  selector {
+    match_expressions {
+      urlfilter = "https://github.com/AviatrixDev"
+    }
+  }
+}
+
+
+## GCP Spoke
+
+module "app3-gcp-spoke" {
+  source  = "terraform-aviatrix-modules/mc-spoke/aviatrix"
+  cloud   = "GCP"
+  version = "1.6.1"
+
+  name           = "gcp-app3"
+  cidr           = "10.4.0.0/16"
+  region         = var.gcp_region
+  account        = var.gcp_account_name
+  transit_gw     = module.aws_transit.transit_gateway.gw_name
+  instance_size  = "n1-standard-4"
+  ha_gw          = false
+  network_domain = aviatrix_segmentation_network_domain.app3.domain_name
+  single_ip_snat = true
+}
+
+module "gcp1" {
+  source = "git::https://github.com/fkhademi/terraform-gcp-instance-module.git"
+
+  name          = "gcp-srv1"
+  region        = var.gcp_region
+  zone          = "a"
+  vpc           = module.app3-gcp-spoke.vpc.name
+  subnet        = module.app3-gcp-spoke.vpc.subnets[0].name
+  ssh_key       = var.ssh_key
+  instance_size = "n1-standard-1"
+  tags          = "avx-snat-noip"
+  cloud_init_data = templatefile("${path.module}/egress.sh",
+    {
+      username = "demo"
+      password = "Password123!"
+      hostname = "gcp-app3"
+    }
+  )
+  #public_ip     = true
+}
+
+resource "aviatrix_smart_group" "gcp-app3" {
+  name = "GCP-APP3"
+  selector {
+    match_expressions {
+      cidr = "${module.gcp1.vm.network_interface[0].network_ip}/32"
+    }
+  }
+}
+
+# GCP Instances
+
+resource "aws_route53_record" "int3" {
+  zone_id = data.aws_route53_zone.pub.zone_id
+  name    = "int3.${data.aws_route53_zone.pub.name}"
+  type    = "A"
+  ttl     = "1"
+  records = [module.gcp1.vm.network_interface[0].network_ip]
+}
+
 
 
 # resource "guacamole_connection_ssh" "aws_int" {

@@ -79,6 +79,13 @@ echo "<user-mapping>
     <param name=\"username\">${username}</param>
     <param name=\"password\">${password}</param>
   </connection>  
+  <connection name=\"gcp-app3\">
+    <protocol>ssh</protocol>
+    <param name=\"hostname\">${host5}</param>
+    <param name=\"port\">22</param>
+    <param name=\"username\">${username}</param>
+    <param name=\"password\">${password}</param>
+  </connection>  
 </authorize>
 </user-mapping>" | sudo tee -a /etc/guacamole/user-mapping.xml
 
