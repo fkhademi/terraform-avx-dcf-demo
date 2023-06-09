@@ -136,7 +136,7 @@ resource "aws_route53_record" "guac" {
   name    = "guac.${data.aws_route53_zone.pub.name}"
   type    = "A"
   ttl     = "1"
-  records = [module.guac.vm.public_ip]
+  records = [module.guac.eip.public_ip]
 }
 
 resource "aviatrix_smart_group" "guac" {
